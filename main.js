@@ -21,7 +21,7 @@ Bounds.prototype.recompute = function() {
     this.width = this.x2 - this.x1;
     this.height = this.y2 - this.y1;
 };
-    
+
 //// 
 var Tile = function() {
     this.x = 0;
@@ -35,11 +35,11 @@ Tile.prototype.calcBounds = function(x, y) { return this.lastBounds; };
 Tile.prototype.getBounds = function() {
     var x = this.x;
     var y = this.y;
-    
+
     if (this.lastBounds && this.lastX === x && this.lastY === y) {
         return this.lastBounds;
     }
-    
+
     this.lastX = x;
     this.lastY = y;
 
@@ -77,18 +77,19 @@ Tree.prototype.calcBounds = function(x, y) {
     this.lastBounds.x2 = boundX2;
     this.lastBounds.y2 = boundY2;
     this.lastBounds.recompute();
-    
+
     return this.lastBounds;
 };
 //////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////
-var Entity = function(color, height, speed, tilesContainer) {
+var Entity = function(color, height, speed, engine) {
     Tile.call(this);
     this.color = color;
     this.height = height;
     this.speed = speed;
-    this.tilesContainer = tilesContainer;
+    this.engine = engine;
+    this.tilesContainer = engine.tilesContainer;
 };
 Entity.prototype = Object.create(Tile.prototype);
 Entity.prototype.setTarget = function(x, y) { this.targetX = x; this.targetY = y; };
@@ -106,7 +107,7 @@ Entity.prototype.update = function(tilesContainer) {
 
     var newX = x;
     var newY = y;
-    
+
     if ( x < this.targetX ) {
         newX += this.speed;
     }
@@ -125,7 +126,7 @@ Entity.prototype.update = function(tilesContainer) {
         return;
     }
     this.setPosition(newX, newY);
-    
+
     return true;
 };
 Entity.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
@@ -152,8 +153,8 @@ Entity.prototype.setType = function(entityType) {
 };
 
 //////////////////////////////////////////////////////////////////////////
-var Bullet = function(color, height, speed, originId) {
-    Entity.call(this, color, height, speed);
+var Bullet = function(color, height, speed, originId, engine) {
+    Entity.call(this, color, height, speed, engine);
     this.originId = originId;
     this.distance = 0;
     this.range = 400;
@@ -176,8 +177,8 @@ Bullet.prototype.calcBounds = function(x, y) {
 Bullet.prototype.update = function(tilesContainer) {
     this.distance += this.speed;
     if (this.distance > this.range) {
-            tilesContainer.removeTile(this);
-            return true;
+        tilesContainer.removeTile(this);
+        return true;
     }
     return Entity.prototype.update.call(this, tilesContainer);
 };
@@ -199,18 +200,21 @@ Bullet.prototype.onCollision = function(tilesContainer) {
 };
 Bullet.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
     var collided = Entity.prototype.collisionDetector.call(this, x, y, otherTile);
-    
-    if (otherTile.id !== this.originId && otherTile.getAttackableBounds && otherTile.getAttackableBounds().collision(this.getBounds())) {
+
+    if (otherTile.id !== this.originId &&
+        otherTile.getAttackableBounds &&
+        otherTile.getAttackableBounds().collision(this.getBounds())
+    ) {
         // increase score
         score++;
-        
+
         // remove self
         tilesContainer.removeTile(otherTile);
-        
-        // spawn more zombies -- todo, this shouldn't be the tilesContainer doing it
-        tilesContainer.spawnZombie(otherTile.speed + 0.1);
-        tilesContainer.spawnZombie(otherTile.speed + 0.1);
-        tilesContainer.spawnZombie(otherTile.speed + 0.1);
+
+        // spawn more zombies
+        this.engine.spawnZombie(otherTile.speed + 0.1);
+        this.engine.spawnZombie(otherTile.speed + 0.1);
+        this.engine.spawnZombie(otherTile.speed + 0.1);
 
         return true;
     }
@@ -221,8 +225,8 @@ Bullet.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
 //////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////
-var Robot = function(color, height, speed, tilesContainer) {
-    Entity.call(this, color, height, speed, tilesContainer);
+var Robot = function(color, height, speed, engine) {
+    Entity.call(this, color, height, speed, engine);
 };
 Robot.prototype = Object.create(Entity.prototype);
 Robot.prototype.calcBounds = function(x, y) {
@@ -266,7 +270,7 @@ Robot.prototype.getAttackableBounds = function() {
 Robot.prototype.fireBullet = function(speed, xOffsetStart, yOffsetStart, xOffsetEnd, yOffsetEnd) {
     var x = this.x;
     var y = this.y;
-    var bullet = new Bullet({r: 255, g: 0, b: 0}, 8, speed, this.id);
+    var bullet = new Bullet({r: 255, g: 0, b: 0}, 8, speed, this.id, this.engine);
     bullet.setPosition(x + xOffsetStart, y + yOffsetStart);
     bullet.setTarget(x + xOffsetEnd, y + yOffsetEnd);
     this.tilesContainer.addTile(bullet);
@@ -282,131 +286,92 @@ Robot.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
 
 //////////////////////////////////////////////////////////////////////////
 
-var NewTilesContainer = function() {
-    var tiles = [];
-    var bounds = [];
-    var zombies = [];
-
-    var addTile = function(tile) {
-        tiles.push(tile);
-    };
-    
-    var sort = function() {
-        var swapped;
-        do {
-            swapped = false;
-            for (var i=0; i < tiles.length-1; i++) {
-                if (tiles[i].y > tiles[i+1].y) {
-                    var temp = tiles[i];
-                    tiles[i] = tiles[i+1];
-                    tiles[i+1] = temp;
-                    swapped = true;
-                }
-            }
-        } while (swapped);
-    };
-    
-    var getTiles = function() {
-        return tiles; 
-    };
-
-    var getZombies = function() {
-        return zombies; 
-    };
-    
-    var collisionAt = function(targetTile, x, y) {
-        for (var i = 0; i < tiles.length; i++) {
-            var tile = tiles[i];
-            if (targetTile.collisionDetector(x, y, tile, this)) {
-                return true;
-            }
-        }
-        
-        return false;
-    };
-
-    var removeTile = function(tile) {
-        tiles = tiles.filter( function(t) {
-            return t.id !== tile.id;
-        });
-        if (tile.entityType === "zombie") {
-            zombies = zombies.filter( function(t) {
-                return t.id !== tile.id;
-            });
-        }
-    };
-    
-    var spawnZombie = function(speed) {
-        var robot = new Robot( { r: 255, g: 0, b: 0 }, 103, speed, this);
-        if (random(0, 1) > 0.5) {
-            robot.setPosition( random(0, width), random(0, 1) > 0.5 ? -70 : height+70 );
-        } else {
-            robot.setPosition( random(0, 1) > 0.5 ? -70 : width+70, random(0, height) );
-        }
-        robot.setType("zombie");
-        addTile(robot);
-        zombies.push(robot);
-    };
-    
-    return {
-        addTile: addTile,
-        sort: sort,
-        getTiles: getTiles,
-        removeTile: removeTile,
-        collisionAt: collisionAt,
-        spawnZombie: spawnZombie,
-        getZombies: getZombies
-    };
+var TilesContainer = function() {
+    this.tiles = [];
+    this.tilesByType = {};
 };
+TilesContainer.prototype.addTile = function(tile) {
+    this.tiles.push(tile);
+    if (tile.entityType) {
+        var typeTiles = this.tilesByType[tile.entityType];
+        if (!typeTiles) {
+            typeTiles = [];
+            this.tilesByType[tile.entityType] = typeTiles;
+        }
+        typeTiles.push(tile);
+    }
+};
+TilesContainer.prototype.sortTiles = function() {
+    var swapped;
+    var tiles = this.tiles;
+    do {
+        swapped = false;
+        for (var i=0; i < tiles.length-1; i++) {
+            if (tiles[i].y > tiles[i+1].y) {
+                var temp = tiles[i];
+                tiles[i] = tiles[i+1];
+                tiles[i+1] = temp;
+                swapped = true;
+            }
+        }
+    } while (swapped);
+};
+TilesContainer.prototype.getTiles = function() {
+    return this.tiles;
+};
+TilesContainer.prototype.collisionAt = function(targetTile, x, y) {
+    var tiles = this.tiles;
+    for (var i = 0; i < tiles.length; i++) {
+        var tile = tiles[i];
+        if (targetTile.collisionDetector(x, y, tile, this)) {
+            return true;
+        }
+    }
 
+    return false;
+};
+TilesContainer.prototype.removeTile = function(tile) {
+    this.tiles = this.tiles.filter( function(t) {
+        return t.id !== tile.id;
+    });
+    var typeTiles = this.tilesByType[tile.entityType];
+    if (!typeTiles) {
+        return;
+    }
+    typeTiles = typeTiles.filter( function(t) {
+        return t.id !== tile.id;
+    });
+    this.tilesByType[tile.entityType] = typeTiles;
+};
+TilesContainer.prototype.getTilesByType = function(entityType) {
+    return this.tilesByType[entityType];
+};
 ////////////////////////////////////////////////////////////////////////
-background(0, 0, 0);
-
-var tree = new Tree({r: 0, g: 200, b: 0}, 103);
-tree.setPosition(200, 200);
-tree.render();
-var tileRect = tree.getBounds();
-stroke(255, 0, 0);
-rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
-
-var tilesContainer = NewTilesContainer();
-var man = new Robot({ r: 238, g: 255, b: 0 }, 103, 3, tilesContainer);
-man.setType("player");
-tilesContainer.addTile(man);
-
-for ( var i = 0; i < robotCount; i++ ) {
-    tilesContainer.spawnZombie(random(0.1, 0.5));
-}
-
-man.setPosition(100, 100);
-man.render();
-var tileRect = man.getBounds();
-stroke(255, 0, 0);
-rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
-var tileRect = man.getAttackableBounds();
-stroke(255, 0, 0);
-noFill();
-rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
-noFill();
-
-var bullet = new Bullet({ r: 255, g: 0, b: 0 }, 8, 3);
-bullet.setPosition(250, 250);
-bullet.render();
-var tileRect = bullet.getBounds();
-stroke(255, 0, 0);
-rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
-
-for ( var i = 0; i < treeCount; i++ ) {
-    var tree = new Tree({r: 0, g: random(100, 200), b: 0}, random(50, 103));
-    tilesContainer.addTile(tree);
-    tree.setPosition(random(0, width), random(0, height));
-}
-
-tilesContainer.sort();
-
-//////////////////////////////////////////////////////////////////////////
-
-keyPressed = function() {
+var GameEngine = function(tilesContainer) {
+    this.tilesContainer = tilesContainer;
+};
+GameEngine.prototype.createPlayer = function() {
+    var man = new Robot({ r: 238, g: 255, b: 0 }, 103, 3, this);
+    man.setType("player");
+    this.tilesContainer.addTile(man);
+    this.player = man;
+    return man;
+};
+GameEngine.prototype.spawnZombie = function(speed) {
+    var robot = new Robot( { r: 255, g: 0, b: 0 }, 103, speed, this);
+    if (random(0, 1) > 0.5) {
+        robot.setPosition( random(0, width), random(0, 1) > 0.5 ? -70 : height+70 );
+    } else {
+        robot.setPosition( random(0, 1) > 0.5 ? -70 : width+70, random(0, height) );
+    }
+    robot.setType("zombie");
+    this.tilesContainer.addTile(robot);
+};
+GameEngine.prototype.getZombies = function() {
+    return this.tilesContainer.getTilesByType("zombie");
+};
+GameEngine.prototype.keyHandling = function() {
+    var man = this.player;
     var x = man.x;
     var y = man.y;
     var speed = 15;
@@ -423,7 +388,7 @@ keyPressed = function() {
     if (keyCode === 39) {
         x += speed;
     }
-    
+
     var bulletSpeed = 8;
 
     if (keyCode === 87) {
@@ -438,25 +403,23 @@ keyPressed = function() {
     if (keyCode === 68) {
         man.fireBullet(bulletSpeed, 0, -30, 300, -30);
     }
-    
+
     man.setTarget(x, y);
-    var zombies = tilesContainer.getZombies();
+    var zombies = this.getZombies();
     for ( var i = 0; i < zombies.length; i++ ) {
         var robot = zombies[i];
         robot.setTarget(x, y);
     }
 };
 
-var f = createFont("monospace", 30);
-textFont(f);
-
-draw = function() {
+GameEngine.prototype.update = function() {
+    var tilesContainer = this.tilesContainer;
     var tiles = tilesContainer.getTiles();
     for ( var i = 0; i < tiles.length; i++ ) {
         var tile = tiles[i];
 
         if (tile && tile.update(tilesContainer)) {
-          tilesContainer.sort();
+            tilesContainer.sortTiles();
         }
     }
 
@@ -466,11 +429,68 @@ draw = function() {
         var tile = tiles[i];
         tile.render();
     }
-    
+
     // score
     fill(255, 0, 0);
     text("Score " + score + " / obj " + tiles.length, 10, 30);
-
-
 };
 
+////////////////////////////////////////////////////////////////////////
+var tilesContainer = new TilesContainer();
+var engine = new GameEngine(tilesContainer);
+var man = engine.createPlayer();
+background(0, 0, 0);
+
+// starting zombies
+for ( var i = 0; i < robotCount; i++ ) {
+    engine.spawnZombie(random(0.1, 0.5));
+}
+
+// starting trees
+for ( var i = 0; i < treeCount; i++ ) {
+    var tree = new Tree({r: 0, g: random(100, 200), b: 0}, random(50, 103));
+    tilesContainer.addTile(tree);
+    tree.setPosition(random(0, width), random(0, height));
+}
+
+// for debugging
+var tree = new Tree({r: 0, g: 200, b: 0}, 103);
+tree.setPosition(200, 200);
+tree.render();
+var tileRect = tree.getBounds();
+stroke(255, 0, 0);
+rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
+
+
+man.setPosition(100, 100);
+man.render();
+var tileRect = man.getBounds();
+stroke(255, 0, 0);
+rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
+var tileRect = man.getAttackableBounds();
+stroke(255, 0, 0);
+noFill();
+rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
+noFill();
+
+var bullet = new Bullet({ r: 255, g: 0, b: 0 }, 8, 3, 0, engine);
+bullet.setPosition(250, 250);
+bullet.render();
+var tileRect = bullet.getBounds();
+stroke(255, 0, 0);
+rect(tileRect.x, tileRect.y, tileRect.width, tileRect.height);
+
+tilesContainer.sortTiles();
+//////////////////////////////////////////////////////////////////////////
+
+keyPressed = function() {
+    engine.keyHandling();
+};
+var f = createFont("monospace", 30);
+textFont(f);
+
+draw = function() {
+    engine.update();
+};
+
+//////////////////////////////////////////////////////////////////////////
