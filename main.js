@@ -96,6 +96,12 @@ Entity.prototype.setTarget = function(x, y) { this.targetX = x; this.targetY = y
 Entity.prototype.render = function() {};
 Entity.prototype.onCollision = function() {};
 Entity.prototype.onTargetMet = function() {};
+Entity.prototype.calcDistance = function(x1, y1, x2, y2) {
+    var a = x1 - x2;
+    var b = y1 - y2;
+
+    return Math.sqrt( a*a + b*b );
+};
 Entity.prototype.update = function(tilesContainer) {
     var x = this.x;
     var y = this.y;
@@ -119,6 +125,14 @@ Entity.prototype.update = function(tilesContainer) {
     }
     if ( y > this.targetY ) {
         newY -= this.speed;
+    }
+
+    var distance1 = this.calcDistance(x, y, this.targetX, this.targetY);
+    var distance2 = this.calcDistance(newX, newY, this.targetX, this.targetY);
+
+    if (distance2 > distance1) {
+        newX = this.targetX;
+        newY = this.targetY;
     }
 
     if (tilesContainer.collisionAt(this, newX, newY)) {
@@ -411,6 +425,10 @@ GameEngine.prototype.keyHandling = function() {
         robot.setTarget(x, y);
     }
 };
+GameEngine.prototype.mouseMovedHandling = function() {
+    var man = this.player;
+    man.setTarget(mouseX, mouseY);
+};
 
 GameEngine.prototype.update = function() {
     var tilesContainer = this.tilesContainer;
@@ -486,6 +504,10 @@ tilesContainer.sortTiles();
 keyPressed = function() {
     engine.keyHandling();
 };
+mouseMoved = function() {
+    engine.mouseMovedHandling();
+};
+
 var f = createFont("monospace", 30);
 textFont(f);
 
