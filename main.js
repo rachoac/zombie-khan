@@ -93,6 +93,7 @@ var Entity = function(color, height, speed, engine) {
 };
 Entity.prototype = Object.create(Tile.prototype);
 Entity.prototype.setTarget = function(x, y) { this.targetX = x; this.targetY = y; };
+Entity.prototype.setTargetEntity = function(entity) { this.targetEntity = entity; };
 Entity.prototype.render = function() {};
 Entity.prototype.onCollision = function() {};
 Entity.prototype.onTargetMet = function() {};
@@ -105,8 +106,14 @@ Entity.prototype.calcDistance = function(x1, y1, x2, y2) {
 Entity.prototype.update = function(tilesContainer) {
     var x = this.x;
     var y = this.y;
-
-    if (x === this.targetX && y === this.targetY) {
+    var targetX = this.targetX;
+    var targetY = this.targetY;
+    if (this.targetEntity) {
+        targetX = this.targetEntity.x;
+        targetY = this.targetEntity.y;
+    }
+    
+    if (x === targetX && y === targetY) {
         this.onTargetMet(tilesContainer);
         return;
     }
@@ -114,25 +121,25 @@ Entity.prototype.update = function(tilesContainer) {
     var newX = x;
     var newY = y;
 
-    if ( x < this.targetX ) {
+    if ( x < targetX ) {
         newX += this.speed;
     }
-    if ( x > this.targetX ) {
+    if ( x > targetX ) {
         newX -= this.speed;
     }
-    if ( y < this.targetY ) {
+    if ( y < targetY ) {
         newY += this.speed;
     }
-    if ( y > this.targetY ) {
+    if ( y > targetY ) {
         newY -= this.speed;
     }
 
-    var distance1 = this.calcDistance(x, y, this.targetX, this.targetY);
-    var distance2 = this.calcDistance(newX, newY, this.targetX, this.targetY);
+    var distance1 = this.calcDistance(x, y, targetX, targetY);
+    var distance2 = this.calcDistance(newX, newY, targetX, targetY);
 
     if (distance2 > distance1) {
-        newX = this.targetX;
-        newY = this.targetY;
+        newX = targetX;
+        newY = targetY;
     }
 
     if (tilesContainer.collisionAt(this, newX, newY)) {
@@ -143,7 +150,7 @@ Entity.prototype.update = function(tilesContainer) {
 
     return true;
 };
-Entity.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
+Entity.prototype.collisionDetector = function(x, y, otherTile) {
     var targetBounds;
     if (this.lastX === x && this.lastY === y) {
         targetBounds = this.getBounds();
@@ -289,7 +296,7 @@ Robot.prototype.fireBullet = function(speed, xOffsetStart, yOffsetStart, xOffset
     bullet.setTarget(x + xOffsetEnd, y + yOffsetEnd);
     this.tilesContainer.addTile(bullet);
 };
-Robot.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
+Robot.prototype.collisionDetector = function(x, y, otherTile) {
     var collided = Entity.prototype.collisionDetector.call(this, x, y, otherTile);
     if (collided && this.entityType === "player" && this.id !== otherTile.id && otherTile.entityType === "zombie") {
         // game over
@@ -337,7 +344,7 @@ TilesContainer.prototype.collisionAt = function(targetTile, x, y) {
     var tiles = this.tiles;
     for (var i = 0; i < tiles.length; i++) {
         var tile = tiles[i];
-        if (targetTile.collisionDetector(x, y, tile, this)) {
+        if (targetTile.collisionDetector(x, y, tile)) {
             return true;
         }
     }
@@ -379,6 +386,7 @@ GameEngine.prototype.spawnZombie = function(speed) {
         robot.setPosition( random(0, 1) > 0.5 ? -70 : width+70, random(0, height) );
     }
     robot.setType("zombie");
+    robot.setTargetEntity(this.player);
     this.tilesContainer.addTile(robot);
 };
 GameEngine.prototype.getZombies = function() {
@@ -419,11 +427,6 @@ GameEngine.prototype.keyHandling = function() {
     }
 
     man.setTarget(x, y);
-    var zombies = this.getZombies();
-    for ( var i = 0; i < zombies.length; i++ ) {
-        var robot = zombies[i];
-        robot.setTarget(x, y);
-    }
 };
 GameEngine.prototype.mouseMovedHandling = function() {
     var man = this.player;
@@ -433,12 +436,16 @@ GameEngine.prototype.mouseMovedHandling = function() {
 GameEngine.prototype.update = function() {
     var tilesContainer = this.tilesContainer;
     var tiles = tilesContainer.getTiles();
+    var doSort = false;
     for ( var i = 0; i < tiles.length; i++ ) {
         var tile = tiles[i];
 
         if (tile && tile.update(tilesContainer)) {
-            tilesContainer.sortTiles();
+            doSort = true;
         }
+    }
+    if (doSort) {
+        tilesContainer.sortTiles();
     }
 
     background(0, 0, 0);
