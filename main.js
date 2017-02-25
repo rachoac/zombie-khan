@@ -112,7 +112,7 @@ Entity.prototype.update = function(tilesContainer) {
         targetX = this.targetEntity.x;
         targetY = this.targetEntity.y;
     }
-    
+
     if (x === targetX && y === targetY) {
         this.onTargetMet(tilesContainer);
         return;
@@ -150,7 +150,7 @@ Entity.prototype.update = function(tilesContainer) {
 
     return true;
 };
-Entity.prototype.collisionDetector = function(x, y, otherTile) {
+Entity.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
     var targetBounds;
     if (this.lastX === x && this.lastY === y) {
         targetBounds = this.getBounds();
@@ -226,16 +226,7 @@ Bullet.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
         otherTile.getAttackableBounds &&
         otherTile.getAttackableBounds().collision(this.getBounds())
     ) {
-        // increase score
-        score++;
-
-        // remove self
-        tilesContainer.removeTile(otherTile);
-
-        // spawn more zombies
-        this.engine.spawnZombie(otherTile.speed + 0.1);
-        this.engine.spawnZombie(otherTile.speed + 0.1);
-        this.engine.spawnZombie(otherTile.speed + 0.1);
+        this.engine.killedZombie(otherTile);
 
         return true;
     }
@@ -296,7 +287,7 @@ Robot.prototype.fireBullet = function(speed, xOffsetStart, yOffsetStart, xOffset
     bullet.setTarget(x + xOffsetEnd, y + yOffsetEnd);
     this.tilesContainer.addTile(bullet);
 };
-Robot.prototype.collisionDetector = function(x, y, otherTile) {
+Robot.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
     var collided = Entity.prototype.collisionDetector.call(this, x, y, otherTile);
     if (collided && this.entityType === "player" && this.id !== otherTile.id && otherTile.entityType === "zombie") {
         // game over
@@ -344,7 +335,7 @@ TilesContainer.prototype.collisionAt = function(targetTile, x, y) {
     var tiles = this.tiles;
     for (var i = 0; i < tiles.length; i++) {
         var tile = tiles[i];
-        if (targetTile.collisionDetector(x, y, tile)) {
+        if (targetTile.collisionDetector(x, y, tile, this)) {
             return true;
         }
     }
@@ -391,6 +382,20 @@ GameEngine.prototype.spawnZombie = function(speed) {
 };
 GameEngine.prototype.getZombies = function() {
     return this.tilesContainer.getTilesByType("zombie");
+};
+GameEngine.prototype.killedZombie = function(zombie) {
+    // increase score
+    score++;
+
+    // remove self
+    this.tilesContainer.removeTile(zombie);
+
+    // spawn more fast zombies
+    this.spawnZombie(zombie.speed + 0.1);
+
+    if (random(0, 1) > 0.8) {
+        this.spawnZombie(0.1);
+    }
 };
 GameEngine.prototype.keyHandling = function() {
     var man = this.player;
