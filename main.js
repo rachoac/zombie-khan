@@ -22,7 +22,7 @@ Bounds.prototype.recompute = function() {
     this.height = this.y2 - this.y1;
 };
 
-//// 
+////
 var Tile = function() {
     this.x = 0;
     this.y = 0;
@@ -174,6 +174,51 @@ Entity.prototype.setType = function(entityType) {
 };
 
 //////////////////////////////////////////////////////////////////////////
+
+var Explosion = function(color, height, speed, engine) {
+    Tile.call(this);
+    this.color = color;
+    this.height = height;
+    this.speed = speed;
+    this.engine = engine;
+    this.distance = 0;
+    this.currentSize = 0;
+    this.increment = 1;
+    this.turns = 0;
+    this.noCollision = true;
+};
+Explosion.prototype = Object.create(Tile.prototype);
+Explosion.prototype.render = function() {
+    var height = this.height;
+    var color = this.color;
+    var x = this.x;
+    var y = this.y;
+    stroke(255, 255, 255);
+    fill(random(0,255), random(0,255), random(0, 255));
+    ellipse(x, y, this.currentSize, this.currentSize);
+};
+Explosion.prototype.update = function(tilesContainer) {
+    if (this.turns > 1) {
+        tilesContainer.removeTile(this);
+        return true;
+    }
+    if (this.increment === 1) {
+        this.currentSize += this.speed;
+        if (this.currentSize > this.height) {
+            this.turns += 1;
+            this.increment = -1;
+        }
+    } else {
+        this.currentSize -= this.speed;
+        if (this.currentSize < 1) {
+            this.turns += 1;
+            this.increment = 1;
+        }
+    }
+    return true;
+};
+
+//////////////////////////////////////////////////////////////////////////
 var Bullet = function(color, height, speed, originId, engine) {
     Entity.call(this, color, height, speed, engine);
     this.originId = originId;
@@ -217,6 +262,9 @@ Bullet.prototype.onTargetMet = function(tilesContainer) {
     tilesContainer.removeTile(this);
 };
 Bullet.prototype.onCollision = function(tilesContainer) {
+    var boom = new Explosion({r:255, g:255, b:255}, 40, 8, this.engine);
+    boom.setPosition(this.x, this.y);
+    tilesContainer.addTile(boom);
     tilesContainer.removeTile(this);
 };
 Bullet.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
@@ -232,7 +280,6 @@ Bullet.prototype.collisionDetector = function(x, y, otherTile, tilesContainer) {
     }
     return collided;
 };
-
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -335,6 +382,9 @@ TilesContainer.prototype.collisionAt = function(targetTile, x, y) {
     var tiles = this.tiles;
     for (var i = 0; i < tiles.length; i++) {
         var tile = tiles[i];
+        if (tile.noCollision) {
+            continue;
+        }
         if (targetTile.collisionDetector(x, y, tile, this)) {
             return true;
         }
